@@ -20,7 +20,7 @@ INSERT layoffs_staging
 SELECT * FROM world_layoffs.layoffs;
 
 
--- now when we are data cleaning we usually follow a few steps
+-- the following steps were followed to clean the data
 -- 1. check for duplicates and remove any
 -- 2. standardize data and fix errors
 -- 3. Look at null values and see what 
@@ -28,44 +28,15 @@ SELECT * FROM world_layoffs.layoffs;
 
 
 
--- 1. Remove Duplicates
-
-# First let's check for duplicates
-
+-- 1. Removing Duplicates
 
 
 SELECT *
 FROM world_layoffs.layoffs_staging
 ;
 
-SELECT company, industry, total_laid_off,`date`,
-		ROW_NUMBER() OVER (
-			PARTITION BY company, industry, total_laid_off,`date`) AS row_num
-	FROM 
-		world_layoffs.layoffs_staging;
 
 
-
-SELECT *
-FROM (
-	SELECT company, industry, total_laid_off,`date`,
-		ROW_NUMBER() OVER (
-			PARTITION BY company, industry, total_laid_off,`date`
-			) AS row_num
-	FROM 
-		world_layoffs.layoffs_staging
-) duplicates
-WHERE 
-	row_num > 1;
-    
--- let's just look at oda to confirm
-SELECT *
-FROM world_layoffs.layoffs_staging
-WHERE company = 'Oda'
-;
--- it looks like these are all legitimate entries and shouldn't be deleted. We need to really look at every single row to be accurate
-
--- these are our real duplicates 
 SELECT *
 FROM (
 	SELECT company, location, industry, total_laid_off,percentage_laid_off,`date`, stage, country, funds_raised_millions,
@@ -78,26 +49,8 @@ FROM (
 WHERE 
 	row_num > 1;
 
--- these are the ones we want to delete where the row number is > 1 or 2or greater essentially
+-- these are the ones we want to delete  
 
--- now you may want to write it like this:
-WITH DELETE_CTE AS 
-(
-SELECT *
-FROM (
-	SELECT company, location, industry, total_laid_off,percentage_laid_off,`date`, stage, country, funds_raised_millions,
-		ROW_NUMBER() OVER (
-			PARTITION BY company, location, industry, total_laid_off,percentage_laid_off,`date`, stage, country, funds_raised_millions
-			) AS row_num
-	FROM 
-		world_layoffs.layoffs_staging
-) duplicates
-WHERE 
-	row_num > 1
-)
-DELETE
-FROM DELETE_CTE
-;
 
 
 WITH DELETE_CTE AS (
@@ -111,75 +64,17 @@ WHERE (company, location, industry, total_laid_off, percentage_laid_off, `date`,
 	FROM DELETE_CTE
 ) AND row_num > 1;
 
--- one solution, which I think is a good one. Is to create a new column and add those row numbers in. Then delete where row numbers are over 2, then delete that column
--- so let's do it!!
-
-ALTER TABLE world_layoffs.layoffs_staging ADD row_num INT;
-
-
-SELECT *
-FROM world_layoffs.layoffs_staging
-;
-
-CREATE TABLE `world_layoffs`.`layoffs_staging2` (
-`company` text,
-`location`text,
-`industry`text,
-`total_laid_off` INT,
-`percentage_laid_off` text,
-`date` text,
-`stage`text,
-`country` text,
-`funds_raised_millions` int,
-row_num INT
-);
-
-INSERT INTO `world_layoffs`.`layoffs_staging2`
-(`company`,
-`location`,
-`industry`,
-`total_laid_off`,
-`percentage_laid_off`,
-`date`,
-`stage`,
-`country`,
-`funds_raised_millions`,
-`row_num`)
-SELECT `company`,
-`location`,
-`industry`,
-`total_laid_off`,
-`percentage_laid_off`,
-`date`,
-`stage`,
-`country`,
-`funds_raised_millions`,
-		ROW_NUMBER() OVER (
-			PARTITION BY company, location, industry, total_laid_off,percentage_laid_off,`date`, stage, country, funds_raised_millions
-			) AS row_num
-	FROM 
-		world_layoffs.layoffs_staging;
-
--- now that we have this we can delete rows were row_num is greater than 2
-
-DELETE FROM world_layoffs.layoffs_staging2
-WHERE row_num >= 2;
 
 
 
 
-
-
-
--- 2. Standardize Data
+-- 2. Standardizing Data
 
 SELECT * 
 FROM world_layoffs.layoffs_staging2;
 
--- if we look at industry it looks like we have some null and empty rows, let's take a look at these
-SELECT DISTINCT industry
-FROM world_layoffs.layoffs_staging2
-ORDER BY industry;
+-- looking at industry columns with null and empty rows
+
 
 SELECT *
 FROM world_layoffs.layoffs_staging2
@@ -187,7 +82,7 @@ WHERE industry IS NULL
 OR industry = ''
 ORDER BY industry;
 
--- let's take a look at these
+-- Now looking at these industries and which company they belong to
 SELECT *
 FROM world_layoffs.layoffs_staging2
 WHERE company LIKE 'Bally%';
@@ -196,12 +91,9 @@ SELECT *
 FROM world_layoffs.layoffs_staging2
 WHERE company LIKE 'airbnb%';
 
--- it looks like airbnb is a travel, but this one just isn't populated.
--- I'm sure it's the same for the others. What we can do is
--- write a query that if there is another row with the same company name, it will update it to the non-null industry values
--- makes it easy so if there were thousands we wouldn't have to manually check them all
+-- airbnb is a travel, but this one just isn't populated.
 
--- we should set the blanks to nulls since those are typically easier to work with
+-- Setting the blanks to nulls since they easier to work with
 UPDATE world_layoffs.layoffs_staging2
 SET industry = NULL
 WHERE industry = '';
@@ -241,7 +133,7 @@ UPDATE layoffs_staging2
 SET industry = 'Crypto'
 WHERE industry IN ('Crypto Currency', 'CryptoCurrency');
 
--- now that's taken care of:
+-- looking at the table to see the changes:
 SELECT DISTINCT industry
 FROM world_layoffs.layoffs_staging2
 ORDER BY industry;
@@ -252,7 +144,7 @@ ORDER BY industry;
 SELECT *
 FROM world_layoffs.layoffs_staging2;
 
--- everything looks good except apparently we have some "United States" and some "United States." with a period at the end. Let's standardize this.
+-- we have some "United States" and some "United States." with a period at the end. So standardizing this.
 SELECT DISTINCT country
 FROM world_layoffs.layoffs_staging2
 ORDER BY country;
@@ -266,7 +158,7 @@ FROM world_layoffs.layoffs_staging2
 ORDER BY country;
 
 
--- Let's also fix the date columns:
+-- fixing the date columns since their data type is wrong:
 SELECT *
 FROM world_layoffs.layoffs_staging2;
 
@@ -288,15 +180,14 @@ FROM world_layoffs.layoffs_staging2;
 
 -- 3. Look at Null Values
 
--- the null values in total_laid_off, percentage_laid_off, and funds_raised_millions all look normal. I don't think I want to change that
--- I like having them null because it makes it easier for calculations during the EDA phase
-
--- so there isn't anything I want to change with the null values
+-- the null values in total_laid_off, percentage_laid_off, and funds_raised_millions all look normal. 
+-- Hence keeping them null because it makes it easier for calculations during the EDA phase
 
 
 
 
--- 4. remove any columns and rows we need to
+
+-- 4. remove any columns and rows that are needed 
 
 SELECT *
 FROM world_layoffs.layoffs_staging2
