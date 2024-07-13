@@ -12,7 +12,7 @@ FROM world_layoffs.layoffs;
 
 
 
--- first thing we want to do is create a staging table. This is the one we will work in and clean the data. We want a table with the raw data in case something happens
+--  Creating a staging table to work in and clean the data and keep the raw data intact in case something happens
 CREATE TABLE world_layoffs.layoffs_staging 
 LIKE world_layoffs.layoffs;
 
